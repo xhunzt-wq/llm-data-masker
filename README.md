@@ -80,6 +80,14 @@ LLaVA 格式会处理：
 python main.py --input data/raw.json --output data/masked.json
 ```
 
+启动可视化界面：
+
+```bash
+python main.py --web
+```
+
+界面支持拖拽 JSON/JSONL 文件、文件夹或压缩包，支持勾选需要脱敏的实体类型，并会在处理完成后展示 1 到 3 条脱敏前后对比。
+
 启用可选 NER：
 
 ```bash
