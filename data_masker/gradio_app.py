@@ -159,8 +159,7 @@ def _compact_json(value: Any) -> str:
     return text
 
 
-def _zip_outputs(output_files: list[Path], output_root: Path) -> Path:
-    zip_path = output_root / "masked_results.zip"
+def _zip_outputs(output_files: list[Path], output_root: Path, zip_path: Path) -> Path:
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for output_file in output_files:
             try:
@@ -169,6 +168,15 @@ def _zip_outputs(output_files: list[Path], output_root: Path) -> Path:
                 archive_name = output_file.name
             archive.write(output_file, archive_name.as_posix())
     return zip_path
+
+
+def _prepare_download_file(output_files: list[Path], output_root: Path) -> Path:
+    download_dir = Path(tempfile.mkdtemp(prefix="llm_data_masker_download_"))
+    if len(output_files) == 1:
+        target_path = download_dir / output_files[0].name
+        shutil.copy2(output_files[0], target_path)
+        return target_path
+    return _zip_outputs(output_files, output_root, download_dir / "masked_results.zip")
 
 
 def _mask_dataset_with_cancel(data: Any, masker: DatasetMasker, *, mode: str) -> Any:
@@ -267,7 +275,7 @@ def process_datasets(
                         break
             progress(index / total, desc=f"已完成 {index}/{total}")
 
-    download_path = str(output_files[0]) if len(output_files) == 1 else str(_zip_outputs(output_files, output_root))
+    download_path = str(_prepare_download_file(output_files, output_root))
     status_lines = [
         f"完成脱敏：共处理 {len(output_files)} 个数据集文件。",
         f"输出位置：`{output_root}`",
