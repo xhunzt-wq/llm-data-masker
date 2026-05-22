@@ -5,6 +5,7 @@ import json
 import shutil
 import tarfile
 import tempfile
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from typing import Any
 import gradio as gr
 
 from data_masker.config import DEFAULT_ENTITY_TYPES, MaskingConfig
-from data_masker.dataset import load_dataset, mask_dataset, save_dataset
+from data_masker.dataset import load_dataset, mask_record, save_dataset
 from data_masker.masker import DatasetMasker
 
 
@@ -35,6 +36,7 @@ MODE_LABEL_TO_VALUE = {
     "递归脱敏所有字符串": "all-text",
 }
 DATASET_SUFFIXES = {".json", ".jsonl"}
+CANCEL_EVENT = threading.Event()
 
 
 def _as_path_list(value: Any) -> list[Path]:
@@ -134,15 +136,9 @@ def _selected_entities(selected_labels: list[str] | None) -> list[str]:
     return entities
 
 
-def _resolve_output_path(output_path: str | None, output_picker_value: Any) -> Path:
+def _resolve_output_path(output_path: str | None) -> Path:
     if output_path and output_path.strip():
         return Path(output_path.strip()).expanduser()
-    picked_paths = _as_path_list(output_picker_value)
-    if picked_paths:
-        picked_path = picked_paths[0].expanduser()
-        if picked_path.suffix:
-            return picked_path.parent
-        return picked_path
     return Path.cwd() / "masked_output"
 
 
@@ -175,11 +171,31 @@ def _zip_outputs(output_files: list[Path], output_root: Path) -> Path:
     return zip_path
 
 
+def _mask_dataset_with_cancel(data: Any, masker: DatasetMasker, *, mode: str) -> Any:
+    if mode == "all-text":
+        if isinstance(data, list):
+            masked_items = []
+            for item in data:
+                if CANCEL_EVENT.is_set():
+                    return masked_items
+                masked_items.append(masker.mask_value(item))
+            return masked_items
+        return masker.mask_value(data)
+    if isinstance(data, list):
+        masked_records = []
+        for item in data:
+            if CANCEL_EVENT.is_set():
+                return masked_records
+            masked_records.append(mask_record(item, masker))
+        return masked_records
+    if isinstance(data, dict):
+        return mask_record(data, masker)
+    return masker.mask_value(data)
+
+
 def process_datasets(
-    dataset_files_value: Any,
-    dataset_folder_value: Any,
+    dataset_input_value: Any,
     output_path: str | None,
-    output_picker_value: Any,
     entity_labels: list[str] | None,
     mode_label: str,
     use_ner: bool,
@@ -188,16 +204,17 @@ def process_datasets(
     strict_name_rules: bool,
     progress: gr.Progress = gr.Progress(),
 ) -> tuple[str, list[list[str]], str | None]:
+    CANCEL_EVENT.clear()
     selected_entities = _selected_entities(entity_labels)
     if not selected_entities:
         raise gr.Error("请至少选择一种需要脱敏的数据类型。")
 
-    input_paths = [*_as_path_list(dataset_files_value), *_as_path_list(dataset_folder_value)]
+    input_paths = _as_path_list(dataset_input_value)
     if not input_paths:
         raise gr.Error("请先拖拽或选择输入数据集文件、文件夹或压缩包。")
 
     mode = MODE_LABEL_TO_VALUE.get(mode_label, "auto")
-    output_base = _resolve_output_path(output_path, output_picker_value)
+    output_base = _resolve_output_path(output_path)
     preview_rows: list[list[str]] = []
     output_files: list[Path] = []
 
@@ -222,9 +239,15 @@ def process_datasets(
 
         total = len(datasets)
         for index, (dataset_path, relative_path) in enumerate(datasets, start=1):
+            if CANCEL_EVENT.is_set():
+                return "已终止脱敏任务。", preview_rows, None
             progress((index - 1) / total, desc=f"正在处理 {relative_path.as_posix()}")
             original, resolved_format = load_dataset(dataset_path, "auto")
-            masked = mask_dataset(original, masker, mode=mode)
+            if CANCEL_EVENT.is_set():
+                return "已终止脱敏任务。", preview_rows, None
+            masked = _mask_dataset_with_cancel(original, masker, mode=mode)
+            if CANCEL_EVENT.is_set():
+                return "已终止脱敏任务。", preview_rows, None
             if exact_output_file:
                 target_path = output_base
             else:
@@ -254,34 +277,34 @@ def process_datasets(
     return "\n\n".join(status_lines), preview_rows, download_path
 
 
+def show_running_button() -> tuple[Any, Any, str]:
+    CANCEL_EVENT.clear()
+    return gr.update(visible=False), gr.update(visible=True), "正在准备脱敏任务..."
+
+
+def show_start_button() -> tuple[Any, Any]:
+    CANCEL_EVENT.clear()
+    return gr.update(visible=True), gr.update(visible=False)
+
+
+def cancel_processing() -> tuple[Any, Any, str]:
+    CANCEL_EVENT.set()
+    return gr.update(visible=True), gr.update(visible=False), "正在终止脱敏任务..."
+
+
 def build_interface() -> gr.Blocks:
     with gr.Blocks(title="LLM 数据集脱敏工具") as demo:
         gr.Markdown("# LLM 数据集脱敏工具\n拖拽文件夹、JSON/JSONL 文件或压缩包，选择脱敏类型后开始处理。")
-        with gr.Row():
-            dataset_files = gr.File(
-                label="输入数据集文件或压缩包",
-                file_count="multiple",
-                type="filepath",
-                file_types=[".json", ".jsonl", ".zip", ".tar", ".gz", ".tgz"],
-            )
-            dataset_folder = gr.File(
-                label="输入数据集文件夹",
-                file_count="directory",
-                type="filepath",
-            )
-        with gr.Row():
-            output_path = gr.Textbox(
-                label="输出路径",
-                placeholder="例如：/root/llm-data-masker/masked_output 或 /root/llm-data-masker/masked.json",
-            )
-            if hasattr(gr, "FileExplorer"):
-                output_picker = gr.FileExplorer(
-                    label="输出路径选择器（可选）",
-                    root_dir=str(Path.cwd()),
-                    file_count="single",
-                )
-            else:
-                output_picker = gr.Textbox(label="输出路径选择器不可用", visible=False)
+        dataset_input = gr.File(
+            label="输入数据集文件、文件夹或压缩包",
+            file_count="multiple",
+            type="filepath",
+            file_types=[".json", ".jsonl", ".zip", ".tar", ".gz", ".tgz"],
+        )
+        output_path = gr.Textbox(
+            label="输出路径",
+            placeholder="例如：/root/llm-data-masker/masked_output 或 /root/llm-data-masker/masked.json",
+        )
         entity_labels = gr.CheckboxGroup(
             label="选择需要脱敏的数据类型",
             choices=ENTITY_CHOICES,
@@ -299,6 +322,7 @@ def build_interface() -> gr.Blocks:
             ner_model = gr.Textbox(label="NER 模型", value="dslim/bert-base-NER")
             ner_device = gr.Number(label="NER 设备（-1 为 CPU，0 为第一张 GPU）", value=-1, precision=0)
         start_button = gr.Button("开始脱敏", variant="primary")
+        stop_button = gr.Button("终止", variant="stop", visible=False)
         status = gr.Markdown(label="处理状态")
         preview = gr.Dataframe(
             label="脱敏前后对比（最多 3 条）",
@@ -308,13 +332,16 @@ def build_interface() -> gr.Blocks:
         )
         download = gr.File(label="下载处理结果")
 
-        start_button.click(
+        start_event = start_button.click(
+            fn=show_running_button,
+            outputs=[start_button, stop_button, status],
+            queue=False,
+        )
+        run_event = start_event.then(
             fn=process_datasets,
             inputs=[
-                dataset_files,
-                dataset_folder,
+                dataset_input,
                 output_path,
-                output_picker,
                 entity_labels,
                 mode_label,
                 use_ner,
@@ -323,6 +350,17 @@ def build_interface() -> gr.Blocks:
                 strict_name_rules,
             ],
             outputs=[status, preview, download],
+        )
+        run_event.then(
+            fn=show_start_button,
+            outputs=[start_button, stop_button],
+            queue=False,
+        )
+        stop_button.click(
+            fn=cancel_processing,
+            outputs=[start_button, stop_button, status],
+            cancels=[run_event],
+            queue=False,
         )
     return demo
 
