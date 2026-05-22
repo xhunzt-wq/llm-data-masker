@@ -12,7 +12,7 @@ from typing import Any
 
 import gradio as gr
 
-from data_masker.config import DEFAULT_ENTITY_TYPES, MaskingConfig
+from data_masker.config import DEFAULT_ENTITY_TYPES, MaskingConfig, resolve_default_ner_model
 from data_masker.dataset import load_dataset, mask_record, save_dataset
 from data_masker.masker import DatasetMasker
 
@@ -207,7 +207,7 @@ def process_datasets(
     entity_labels: list[str] | None,
     mode_label: str,
     use_ner: bool,
-    ner_model: str,
+    ner_model: str | None,
     ner_device: int | float,
     strict_name_rules: bool,
     progress: gr.Progress = gr.Progress(),
@@ -229,7 +229,7 @@ def process_datasets(
     config = MaskingConfig.from_entities(
         selected_entities,
         use_ner=use_ner,
-        ner_model=ner_model or "dslim/bert-base-NER",
+        ner_model=ner_model or resolve_default_ner_model(),
         ner_device=int(ner_device),
         strict_name_rules=strict_name_rules,
     )
@@ -327,7 +327,7 @@ def build_interface() -> gr.Blocks:
             strict_name_rules = gr.Checkbox(label="姓名仅使用严格规则", value=False)
         with gr.Accordion("可选 NER 设置", open=False):
             use_ner = gr.Checkbox(label="启用 NER 辅助脱敏", value=False)
-            ner_model = gr.Textbox(label="NER 模型", value="dslim/bert-base-NER")
+            ner_model = gr.Textbox(label="NER 模型", value=resolve_default_ner_model())
             ner_device = gr.Number(label="NER 设备（-1 为 CPU，0 为第一张 GPU）", value=-1, precision=0)
         start_button = gr.Button("开始脱敏", variant="primary")
         stop_button = gr.Button("终止", variant="stop", visible=False)

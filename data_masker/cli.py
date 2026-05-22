@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from data_masker.config import DEFAULT_ENTITY_TYPES, MaskingConfig
+from data_masker.config import DEFAULT_ENTITY_TYPES, MaskingConfig, resolve_default_ner_model
 from data_masker.dataset import load_dataset, mask_dataset, save_dataset
 from data_masker.masker import DatasetMasker
 
@@ -34,7 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="auto masks common dataset text fields; all-text recursively masks every string value.",
     )
     parser.add_argument("--use-ner", action="store_true", help="Enable optional HuggingFace NER masking")
-    parser.add_argument("--ner-model", default="dslim/bert-base-NER", help="HuggingFace NER model name")
+    parser.add_argument(
+        "--ner-model",
+        default=None,
+        help="HuggingFace NER model name or local model path. Defaults to weight/bert-base-NER if available, otherwise dslim/bert-base-NER.",
+    )
     parser.add_argument("--ner-device", type=int, default=-1, help="NER device, -1 for CPU, 0 for first GPU")
     parser.add_argument(
         "--no-keep-image-tokens",
@@ -56,7 +60,7 @@ def run(args: argparse.Namespace) -> None:
     config = MaskingConfig.from_entities(
         args.entities,
         use_ner=args.use_ner,
-        ner_model=args.ner_model,
+        ner_model=args.ner_model or resolve_default_ner_model(),
         ner_device=args.ner_device,
         keep_image_tokens=not args.no_keep_image_tokens,
         strict_name_rules=args.strict_name_rules,

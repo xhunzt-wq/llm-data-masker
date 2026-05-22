@@ -19,10 +19,22 @@ pip install -r requirement.md
 
 如果只使用规则脱敏，可以不安装第三方依赖，直接运行 `main.py`。
 
+## NER 模型权重
+
+启用 `--use-ner` 时，程序会优先查找本地模型目录 `weight/bert-base-NER`。如果该目录不存在或模型文件不完整，则使用 HuggingFace 模型名 `dslim/bert-base-NER`，由 `transformers` 在首次运行时自动下载并缓存。
+
+如果自动下载失败，可以手动下载 `dslim/bert-base-NER` 的完整模型文件，并放到：
+
+```text
+weight/bert-base-NER/
+```
+
+目录中至少需要包含 `config.json`，以及 `pytorch_model.bin` 或 `model.safetensors` 等模型权重文件。重新运行后，默认会直接使用本地目录。
+
 ## 功能
 
 - 规则化字符匹配脱敏：手机号、身份证、银行卡、邮箱、地址、日期、金额、姓名候选等。
-- 可选 NER 模型脱敏：支持 `dslim/bert-base-NER`。
+- 可选 NER 模型脱敏：支持本地 `weight/bert-base-NER` 或远程 `dslim/bert-base-NER`。
 - 支持 JSON 与 JSONL。
 - 支持普通问答字段和 LLaVA `conversations[].value`。
 - 默认保护 LLaVA `<image>` 标记，避免被误处理。
@@ -94,6 +106,8 @@ python main.py --web
 python main.py --input data/raw.json --output data/masked.json --use-ner --ner-device -1
 ```
 
+如果 `weight/bert-base-NER` 中已有完整模型文件，上面的命令会优先使用本地模型；否则会尝试自动下载 `dslim/bert-base-NER`。
+
 处理 JSONL：
 
 ```bash
@@ -121,7 +135,7 @@ python main.py -i data/raw.json -o data/masked.json --mode all-text
 --entities              指定要脱敏的实体类型
 --mode                  auto/all-text
 --use-ner               启用可选 NER 脱敏
---ner-model             HuggingFace NER 模型名，默认 dslim/bert-base-NER
+--ner-model             HuggingFace NER 模型名或本地模型路径，默认优先使用 weight/bert-base-NER，否则使用 dslim/bert-base-NER
 --ner-device            -1 使用 CPU，0 使用第一张 GPU
 --strict-name-rules     只脱敏带姓名上下文前缀的中文姓名
 ```
