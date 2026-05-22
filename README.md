@@ -2,6 +2,23 @@
 
 面向大模型问答数据集和 LLaVA 多模态文档数据集的隐私脱敏工具。
 
+## 环境要求
+
+- Python >= 3.10
+
+默认规则脱敏、JSON/JSONL 读写、LLaVA 数据集处理只使用 Python 标准库。`requirement.md` 中的依赖主要用于可选 NER 模型脱敏。
+
+## 安装环境
+
+
+安装可选模型依赖：
+
+```bash
+pip install -r requirement.md
+```
+
+如果只使用规则脱敏，可以不安装第三方依赖，直接运行 `main.py`。
+
 ## 功能
 
 - 规则化字符匹配脱敏：手机号、身份证、银行卡、邮箱、地址、日期、金额、姓名候选等。
@@ -9,6 +26,53 @@
 - 支持 JSON 与 JSONL。
 - 支持普通问答字段和 LLaVA `conversations[].value`。
 - 默认保护 LLaVA `<image>` 标记，避免被误处理。
+
+## 支持的脱敏实体
+
+- `phone`：手机号
+- `id_card`：身份证号
+- `bank_card`：银行卡号
+- `email`：邮箱
+- `address`：中文地址片段
+- `date`：日期
+- `money`：金额
+- `name`：中文姓名候选
+- `passport`：护照号
+- `license_plate`：车牌号
+
+## 输入数据格式
+
+支持：
+
+- `.json`
+- `.jsonl`
+
+常见问答字段会自动脱敏：
+
+- `text`
+- `content`
+- `prompt`
+- `completion`
+- `question`
+- `answer`
+- `query`
+- `response`
+- `instruction`
+- `input`
+- `output`
+- `value`
+
+LLaVA 格式会处理：
+
+```json
+{
+  "image": "xxx.jpg",
+  "conversations": [
+    {"from": "human", "value": "<image> 姓名张三，电话13812345678"},
+    {"from": "gpt", "value": "用户电话是13812345678"}
+  ]
+}
+```
 
 ## 快速开始
 
@@ -19,8 +83,25 @@ python main.py --input data/raw.json --output data/masked.json
 启用可选 NER：
 
 ```bash
-pip install transformers torch
 python main.py --input data/raw.json --output data/masked.json --use-ner --ner-device -1
+```
+
+处理 JSONL：
+
+```bash
+python main.py --input data/raw.jsonl --output data/masked.jsonl
+```
+
+只脱敏手机号、银行卡号和邮箱：
+
+```bash
+python main.py -i data/raw.json -o data/masked.json --entities phone bank_card email
+```
+
+递归脱敏所有字符串字段：
+
+```bash
+python main.py -i data/raw.json -o data/masked.json --mode all-text
 ```
 
 ## CLI 参数
