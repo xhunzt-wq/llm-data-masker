@@ -11,13 +11,24 @@
 ## 安装环境
 
 
-安装可选模型依赖：
+安装环境：
 
 ```bash
 pip install -r requirement.md
 ```
 
-如果只使用规则脱敏，可以不安装第三方依赖，直接运行 `main.py`。
+安装可选模型依赖：
+
+```bash
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+```
+
+
+
+如果只使用规则脱敏，可以不安装模型依赖，直接运行 `main.py`。
+
+
+
 
 ## NER 模型权重
 
@@ -99,7 +110,7 @@ python main.py --web
 ```
 
 界面支持拖拽 JSON/JSONL 文件、文件夹或压缩包，支持勾选需要脱敏的实体类型，并会在处理完成后展示 1 到 3 条脱敏前后对比。
-
+![alt text](asset/image.png)
 启用可选 NER：
 
 ```bash
