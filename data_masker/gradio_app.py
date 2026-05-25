@@ -31,10 +31,6 @@ ENTITY_LABEL_TO_TYPE = {
     "车牌号": "license_plate",
 }
 ENTITY_CHOICES = [ALL_ENTITY_LABEL, *ENTITY_LABEL_TO_TYPE.keys()]
-MODE_LABEL_TO_VALUE = {
-    "自动识别常见字段": "auto",
-    "递归脱敏所有字符串": "all-text",
-}
 DATASET_SUFFIXES = {".json", ".jsonl"}
 CANCEL_EVENT = threading.Event()
 
@@ -205,7 +201,6 @@ def process_datasets(
     dataset_input_value: Any,
     output_path: str | None,
     entity_labels: list[str] | None,
-    mode_label: str,
     use_ner: bool,
     ner_model: str | None,
     ner_device: int | float,
@@ -221,7 +216,7 @@ def process_datasets(
     if not input_paths:
         raise gr.Error("请先拖拽或选择输入数据集文件、文件夹或压缩包。")
 
-    mode = MODE_LABEL_TO_VALUE.get(mode_label, "auto")
+    mode = "auto"
     output_base = _resolve_output_path(output_path)
     preview_rows: list[list[str]] = []
     output_files: list[Path] = []
@@ -313,18 +308,13 @@ def build_interface() -> gr.Blocks:
             label="输出路径",
             placeholder="例如：/root/llm-data-masker/masked_output 或 /root/llm-data-masker/masked.json",
         )
-        entity_labels = gr.CheckboxGroup(
-            label="选择需要脱敏的数据类型",
-            choices=ENTITY_CHOICES,
-            value=ENTITY_CHOICES,
-        )
-        with gr.Row():
-            mode_label = gr.Dropdown(
-                label="处理模式",
-                choices=list(MODE_LABEL_TO_VALUE.keys()),
-                value="自动识别常见字段",
+        with gr.Accordion("选择需要脱敏的数据类型", open=False):
+            entity_labels = gr.CheckboxGroup(
+                label="数据类型",
+                choices=ENTITY_CHOICES,
+                value=ENTITY_CHOICES,
             )
-            strict_name_rules = gr.Checkbox(label="姓名仅使用严格规则", value=False)
+        strict_name_rules = gr.State(False)
         with gr.Accordion("可选 NER 设置", open=False):
             use_ner = gr.Checkbox(label="启用 NER 辅助脱敏", value=False)
             ner_model = gr.Textbox(label="NER 模型", value=resolve_default_ner_model())
@@ -351,7 +341,6 @@ def build_interface() -> gr.Blocks:
                 dataset_input,
                 output_path,
                 entity_labels,
-                mode_label,
                 use_ner,
                 ner_model,
                 ner_device,
