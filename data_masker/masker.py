@@ -3,6 +3,10 @@ from data_masker.ner import OptionalNerMasker
 from data_masker.rules import apply_regex_rules
 
 
+LLAVA_IMAGE_TOKEN = "<image>"
+LLAVA_IMAGE_SENTINEL = "\ue000\ue001"
+
+
 class DatasetMasker:
     def __init__(self, config: MaskingConfig | None = None) -> None:
         self.config = config or MaskingConfig()
@@ -33,7 +37,7 @@ class DatasetMasker:
         return value
 
     def _protect_llava_image_token(self, text: str) -> str:
-        return text.replace("<image>", "__LLAVA_IMAGE_TOKEN__")
+        return text.replace(LLAVA_IMAGE_TOKEN, LLAVA_IMAGE_SENTINEL)
 
     def _restore_llava_image_token(self, text: str) -> str:
-        return text.replace("__LLAVA_IMAGE_TOKEN__", "<image>")
+        return text.replace(LLAVA_IMAGE_SENTINEL, LLAVA_IMAGE_TOKEN)

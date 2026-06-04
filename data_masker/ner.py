@@ -45,7 +45,7 @@ class OptionalNerMasker:
             return text
 
         raw_entities = self._pipeline(text)
-        entities = self._normalize_entities(raw_entities)
+        entities = self._normalize_entities(raw_entities, text)
         return self._replace_entities(text, entities)
 
     def _ensure_loaded(self) -> None:
@@ -65,7 +65,7 @@ class OptionalNerMasker:
             self._load_error = exc
             self._pipeline = None
 
-    def _normalize_entities(self, raw_entities: list[dict[str, Any]]) -> list[NerEntity]:
+    def _normalize_entities(self, raw_entities: list[dict[str, Any]], text: str) -> list[NerEntity]:
         entities: list[NerEntity] = []
         for item in raw_entities:
             label = str(item.get("entity_group") or item.get("entity") or "").upper()
@@ -75,8 +75,19 @@ class OptionalNerMasker:
             end = item.get("end")
             score = float(item.get("score") or 0)
             if replacement and isinstance(start, int) and isinstance(end, int) and start < end:
+                start, end = self._expand_to_word_boundaries(text, start, end)
                 entities.append(NerEntity(start=start, end=end, label=label, score=score))
         return self._merge_overlaps(entities)
+
+    def _expand_to_word_boundaries(self, text: str, start: int, end: int) -> tuple[int, int]:
+        while start > 0 and self._is_word_char(text[start - 1]):
+            start -= 1
+        while end < len(text) and self._is_word_char(text[end]):
+            end += 1
+        return start, end
+
+    def _is_word_char(self, value: str) -> bool:
+        return value.isalnum() or value in {"'", "-"}
 
     def _merge_overlaps(self, entities: list[NerEntity]) -> list[NerEntity]:
         if not entities:
